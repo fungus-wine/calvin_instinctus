@@ -1,0 +1,48 @@
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Claude Code
+.claude
+
+# Grot Configuration
+.grotconfig
+
+# Arduino Build Artifacts
+*.hex
+*.bin
+*.elf
+*.eep
+*.lss
+*.sym
+*.map
+*.o
+*.a
+*.d
+
+# Arduino Build Directories
+build/
+.build/
+__vm/
+
+# Arduino IDE
+.development/
+.vscode/arduino.json
+
+# Editor/IDE Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+
+# Test Folders
+test*/
+Test*/
+TEST*/
