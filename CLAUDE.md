@@ -1,118 +1,248 @@
-# CLAUDE.md
+# Calvin Instinctus - Project Instructions
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## System Overview
 
-## Build and Upload Commands
+**Calvin Instinctus** is the low-level reflex and motor control system for Calvin, a self-balancing robot. Running on an Arduino Giga R1 WiFi (dual-core ARM), it handles real-time balance control, motor actuation, and safety monitoring.
 
-This project uses the Grot tool to build and upload Arduino sketches to an Arduino GIGA R1 WiFi board with dual cores (M4 and M7).
+**Calvin's Three-System Architecture:**
+- **instinctus** (THIS SYSTEM) - Reflexive motor control and balance
+- **cogitator** - High-level AI and planning (Jetson Orin Nano) - `/Users/damoncali/code/calvin_cogitator/CLAUDE.md`
+- **explorator** - Human monitoring interface (Electron app) - `/Users/damoncali/code/calvin_explorator/CLAUDE.md`
 
-### M4 Core (Primary Logic)
+**Integration:**
+- Sends status updates to cogitator via serial (M7 core)
+- Receives commands from cogitator via serial (M7 core)
+- Status data flows through cogitator to explorator for visualization
+
+## Hardware Platform
+
+**Arduino Giga R1 WiFi** - Dual-core STM32H747XI
+- **M4 Core** (Cortex-M4 @ 240 MHz) - Real-time control at 100Hz
+- **M7 Core** (Cortex-M7 @ 480 MHz) - Display and communication at 10Hz
+- **RAM**: 1 MB (shared), **Flash**: 2 MB
+- **Display**: Arduino Giga Display Shield 480×320 touchscreen
+- **Connectivity**: WiFi, USB, CAN, I2C (x2), SPI, UART (x4)
+
+**Sensors:**
+- ICM20948 9-axis IMU (I2C 0x69) - Balance sensing
+- 2x VL53L4CX ToF sensors (I2C 0x29) - Collision detection
+- INA228 power monitor (I2C 0x40) - Battery monitoring
+
+**Actuators:**
+- 2x ODrive S1 motor controllers (CAN @ 250kbps, IDs 0x01/0x02)
+
+## Architecture: Dual-Core Responsibilities
+
+### M4 Core (Real-Time, 100Hz) - CRITICAL TIMING
+
+**Tasks:**
+1. **Balance Control** - Read IMU, run complementary filter, calculate tilt
+2. **Motor Control** - Generate velocity commands, send CAN messages to ODrives
+3. **Collision Detection** - Poll ToF sensors at 20 Hz
+4. **Safety Monitoring** - Tilt limits, battery voltage, emergency stops
+
+**Never block on M4** - No delays >1ms, no Serial.print, no blocking I/O
+
+### M7 Core (10Hz) - Communication Hub
+
+**Tasks:**
+1. **Display Management** - Render events on touchscreen
+2. **M4 ↔ Jetson Bridge** - Forward status to Jetson, route commands to M4
+3. **Event Processing** - Pop from m7EventQueue, display and forward
+
+## InstinctusKit Library
+
+**Location:** `/Users/damoncali/code/arduino/librarius/InstinctusKit/src/`
+
+### EventQueue System (M4 ↔ M7 Communication)
+
+**Files:** `EventQueue.h`, `EventQueue.cpp`, `InstinctusKit.h`
+
+**Queue Structure:**
+```cpp
+EventQueue m4EventQueue;  // M7 → M4 commands
+EventQueue m7EventQueue;  // M4 → M7 status
+```
+
+**Event Item:**
+```cpp
+struct EventItem {
+    EventType type;      // 1 byte enum
+    char text[64];       // 64-byte payload
+    bool read;           // Read flag
+};
+```
+
+**Event Types:**
+
+M4 → M7 (Status):
+- `EVENT_BALANCE_STATUS` - Tilt: "2.35"
+- `EVENT_MOTOR_STATUS` - Motors: "left:100,right:98"
+- `EVENT_SAFETY_ALERT` - Warnings
+- `EVENT_COLLISION_WARNING` - Obstacles
+- `EVENT_SYSTEM_HEALTH` - Metrics
+
+M7 → M4 (Commands):
+- `EVENT_SET_TARGET_POSITION` - Move: "150,150"
+- `EVENT_SET_TARGET_HEADING` - Turn: "45"
+- `EVENT_SET_POSITION_LIMITS` - Safety
+- `EVENT_EMERGENCY_STOP` - Stop now
+
+Broadcast (Both):
+- `EVENT_SYSTEM_STARTUP`, `EVENT_BATTERY_LOW`, `EVENT_SYSTEM_SHUTDOWN`
+
+**EventBroadcaster API:**
+```cpp
+#include <InstinctusKit.h>
+
+EventBroadcaster::sendToM4(EVENT_SET_TARGET_POSITION, "150,150");
+EventBroadcaster::sendToM7(EVENT_BALANCE_STATUS, "2.35");
+EventBroadcaster::broadcastEvent(EVENT_EMERGENCY_STOP, "collision");
+```
+
+## Project Structure
+
+```
+/Users/damoncali/code/arduino/calvin_instinctus/
+├── instinctus_m4/              # M4 Core (Real-time control)
+│   ├── instinctus_m4.ino       # Main M4 program
+│   ├── BalanceIMU.{h,cpp}      # Complementary filter
+│   ├── ICM20948Interface.{h,cpp}  # IMU driver
+│   ├── ODriveS1Interface.{h,cpp}  # CAN motor driver
+│   ├── DriveCoordinator.{h,cpp}   # Dual motor control
+│   ├── BalanceMotorController.{h,cpp}  # Balance → Motor
+│   └── BalanceEventObserver.{h,cpp}    # Balance → Events
+│
+├── instinctus_m7/              # M7 Core (Display/Comms)
+│   ├── instinctus_m7.ino       # Main M7 program
+│   ├── TerminalDisplay.{h,cpp} # Touchscreen display
+│   └── JetsonInterface.{h,cpp} # Serial to Jetson
+│
+└── test_*/                     # Test sketches
+
+/Users/damoncali/code/arduino/librarius/InstinctusKit/
+└── src/
+    ├── EventQueue.{h,cpp}      # Dual-queue system
+    ├── InstinctusKit.h
+    ├── Config.h                # Timing constants
+    └── HardwareConfig.h        # Hardware settings
+```
+
+## Communication Protocols
+
+### M4 ↔ M7 (Intercore)
+
+**Protocol:** InstinctusKit EventQueue
+**Method:** Shared memory with atomic operations
+
+**Example:**
+```cpp
+// M4 sends tilt
+EventBroadcaster::sendToM7(EVENT_BALANCE_STATUS, "2.35");
+
+// M7 receives
+EventItem event;
+if (m7EventQueue.pop(event)) {
+    display.println(event.text);
+}
+```
+
+### M7 ↔ Jetson (Serial)
+
+**Protocol:** Newline-delimited JSON (defined by cogitator)
+**Physical:** Serial1/2/3 (TBD) at 115200 baud
+
+**Message Format (see cogitator CLAUDE.md):**
+
+M7 → Jetson:
+```json
+{"type":"balance_status","angle":2.35,"velocity":0.12}
+{"type":"motor_status","left_vel":100,"right_vel":98}
+{"type":"collision_warning","sensor":"front","distance":50}
+```
+
+Jetson → M7:
+```json
+{"type":"set_velocity","left":150,"right":150}
+{"type":"emergency_stop","reason":"user_command"}
+```
+
+## Build and Upload
+
+This project uses the **Grot** tool (~/code/gems/grot) for building and uploading Arduino sketches.
+
+### M4 Core
 ```bash
-cd balancer_m4
+cd instinctus_m4
 grot load
 ```
 
-### M7 Core (Display/UI)
+### M7 Core
 ```bash
-cd balancer_m7
+cd instinctus_m7
 grot load
 ```
 
-The configuration files `balancer_m4.yml` and `balancer_m7.yml` specify board settings including target core, port, and memory allocation.
+.grotconfig files specify board settings, target core, port, and memory allocation.
 
-## Library Management
+## Integration Points
 
-This project uses custom libraries located in `../my-libraries/BalancerKit/` that get symlinked into `../libraries` for the Arduino IDE to discover them.
+### With Cogitator (Jetson)
+**Documentation:** `/Users/damoncali/code/calvin_cogitator/CLAUDE.md`
 
-## Architecture Overview
+**Interface:** Serial communication (NOT IMPLEMENTED)
+**Data Flow:**
+- M7 sends: balance_status, motor_status, collision_warning, battery_status
+- M7 receives: set_velocity, emergency_stop, set_limits
 
-This is a dual-core Arduino robot project with a layered, event-driven architecture:
+**Next Steps:**
+1. Implement JetsonInterface on M7
+2. Coordinate with Jetson serial handler implementation
+3. Test with ping/pong protocol
 
-### Core Design Patterns
-- **Observer Pattern**: Sensors notify observers (like BalanceEventObserver) for real-time responses
-- **Dual Event Queue System**: Separate queues for M4 and M7 with EventBroadcaster routing
-- **Direct Event Processing**: Events processed directly via processM4Event() and processStatusEvent() functions
-- **Hardware Abstraction**: Clean interfaces for sensor hardware (IMUInterface) and motors (MotorInterface)
+### With Explorator (Electron)
+**Documentation:** `/Users/damoncali/code/calvin_explorator/CLAUDE.md`
 
-### Inter-Core Communication Design
-- **Dual Event Queues**:
-  - `m4EventQueue`: Events for M4 to process (movement, balance control)
-  - `m7EventQueue`: Events for M7 to process (sensor data, system health)
-- **EventBroadcaster**: Helper class with sendToM4(), sendToM7(), broadcastEvent() methods
-- **Thread-Safe**: Atomic mutex operations allow simultaneous access from both cores
-- **Event Types**: Core-specific events plus broadcast events (emergency stop, system status)
-- **Direct Processing**: Events processed directly via processM4Event() and processStatusEvent() functions
+**Interface:** Indirect via Jetson (no direct connection)
+**Data Flow:** M4 → M7 → Jetson → Explorator
 
-### Key Components
-- **M4 Core**: Real-time balance control, motor management, collision detection (planned), safety systems (planned)
-- **M7 Core**: Display management (implemented), Jetson communication (planned), navigation IMU (planned), command translation
-- **Shared Libraries**: Dual event queues, configuration in `../my-libraries/BalancerKit/src/`
-- **Sensor Layer**: BalanceIMU with complementary filter, ICM20948Interface for I2C communication
-- **Motor Layer**: DriveCoordinator for dual-motor control, ODriveS1Interface for CAN communication
+**Telemetry Provided:**
+- Balance status (tilt angle, velocity)
+- Motor status (position, velocity, current)
+- Battery health (voltage, current, power)
+- ToF distance measurements
+- I2C bus health
+- IMU FFT data for vibration analysis
 
-### Data Flow (Planned)
-1. **M4 Balance Control**: ICM20948Interface → BalanceIMU → BalanceEventObserver → EventBroadcaster::sendToM7()
-2. **M7 Navigation**: Built-in IMU → Jetson SLAM data (50Hz) - Not yet implemented
-3. **Command Flow**: Jetson → M7 → EventBroadcaster::sendToM4() → m4EventQueue → processM4Event()
-4. **Status Flow**: M4 → EventBroadcaster::sendToM7() → m7EventQueue → processStatusEvent()
-5. **Safety Events**: Collision sensors → EventBroadcaster::broadcastEvent() → Both cores
+## Safety Features
 
-### File Organization
-- Headers (.h) contain interfaces and declarations
-- Implementation (.cpp) files contain logic
-- Shared configuration and utilities in `../my-libraries/BalancerKit/src/`
-- Each core has its own main .ino file and configuration
-- Test sketches in `test_*` directories verify individual components
+**Tilt Limits:**
+- Warning and e stop limits.
 
-## Current Implementation Status
+**Watchdog Timer:** (TODO) M4 monitors M7 heartbeat, stops motors on timeout
 
-### ✅ Fully Implemented & Tested
-- **EventQueue.h/cpp**: Dual-core event queue system with atomic mutex operations
-- **EventBroadcaster**: Clean routing with sendToM4(), sendToM7(), broadcastEvent() methods
-- **BalanceIMU.h/cpp**: Complementary filter algorithm (98% gyro, 2% accel)
-- **BalanceObserver.h**: Observer interface for balance events
-- **BalanceEventObserver.h/cpp**: Bridge from balance events to inter-core event system
-- **IMUInterface.h**: Abstract hardware interface for any IMU sensor
-- **ICM20948Interface.h/cpp**: Concrete I2C driver for ICM20948 9-DOF sensor
-- **MotorInterface.h**: Abstract interface for motor controllers
-- **ODriveS1Interface.h/cpp**: CAN bus driver for ODrive S1 (partial - init complete, methods pending)
-- **DriveCoordinator.h/cpp**: Dual-motor coordination and synchronization
-- **TerminalDisplay.h/cpp**: GIGA R1 display with scrolling terminal output
-- **balancer_m4.ino**: M4 main program with complete architecture integration
-- **balancer_m7.ino**: M7 main program with event processing and test data generation
-- **Config.h**: System timing constants (loop delays, sensor intervals)
-- **HardwareConfig.h**: ICM20948 hardware constants (ranges, I2C address)
+**Battery Protection:** (TODO) Critical voltage shutdown at 9.5V (3S LiPo)
 
-### ⏳ Planned / Not Implemented
-- **Balance Control PID**: Convert tilt angle to motor velocity commands
-- **Collision Detection**: Ultrasonic sensor integration and obstacle avoidance
-- **Safety Systems**: Hardware emergency stop circuits and tilt limits
-- **Position Limits**: Bounded motion control to prevent runaway
-- **Jetson Communication**: USB serial link between M7 and Jetson Orin Nano
-- **Navigation IMU**: Built-in GIGA R1 IMU for SLAM data
-- **Autonomous Navigation**: Integration with Jetson for path planning
+**Safe State:** Motors stop, balance continues, warning displayed, alert sent
 
-## Test Files
 
-The following test sketches verify individual components:
+## Code Style
 
-- **test_dual_queues.ino**: Verifies dual event queue system, EventBroadcaster routing, atomic operations
-- **test_balance_imu.ino**: Tests BalanceIMU complementary filter, IMUInterface abstraction, observer callbacks
-- **test_imu_events.ino**: Tests complete IMU→Observer→EventQueue integration flow
-- **test_motor_control.ino**: Tests motor control stack, CAN bus, ODrive communication, dual-motor sync
+- Class names: `PascalCase` (e.g., `BalanceIMU`)
+- Methods: `camelCase` (e.g., `getTiltAngle()`)
+- Constants: `UPPER_SNAKE_CASE` (e.g., `CRITICAL_TILT_ANGLE`)
+- Private members: `_camelCase`
+- Comments for timing constraints: `// Must call at 100Hz`
 
-## Known Issues
+## Resources
 
-1. **ODriveS1Interface partial** - CAN initialization implemented (first 50 lines), remaining methods need completion
-2. **M7 test mode** - Currently sends random test data instead of real Jetson commands
+- [Arduino Giga R1 Docs](https://docs.arduino.cc/hardware/giga-r1-wifi/)
+- [ODrive CAN Protocol](https://docs.odriverobotics.com/v/latest/can-protocol.html)
+- [ICM20948 Datasheet](https://invensense.tdk.com/products/motion-tracking/9-axis/icm-20948/)
 
-## Architecture Notes
+## Notes
 
-The architecture emphasizes modularity, decoupling, and clean separation between hardware abstraction, event processing, and behavior logic. All major components are now integrated in the main M4 program, which combines IMU balance control, motor coordination, and event-driven communication between cores.
-
-### Recommended Next Steps
-1. Complete ODriveS1Interface implementation (remaining CAN methods)
-2. Implement balance control PID loop (tilt → motor velocity)
-3. Add safety systems and tilt limits
-4. Integrate Jetson communication on M7 core
-5. Test full system integration with hardware
+- **Timing is critical** - M4 must maintain 100Hz for stable balance
+- **Never block on M4** - No Serial.print, no delays >1ms
+- **Serial is M7 only** - All M4 output goes via event queue
+- **CAN conflicts** - Only M4 controls CAN bus

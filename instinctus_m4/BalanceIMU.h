@@ -1,6 +1,7 @@
 #ifndef BALANCE_IMU_H
 #define BALANCE_IMU_H
 
+#include <Arduino.h>
 #include "IMUInterface.h"
 
 // Forward declaration

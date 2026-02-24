@@ -2,7 +2,7 @@
 #define BALANCE_EVENT_OBSERVER_H
 
 #include "BalanceObserver.h"
-#include <BalancerKit.h>
+#include <InstinctusKit.h>
 
 /**
  * BalanceEventObserver.h - Bridge Between Balance Events and Inter-Core Communication

@@ -1,182 +1,119 @@
+
 /**
- * balancer_m7.ino - M7 Core Main Program
+ * test_minimal_m7.ino - Minimal Intercore Queue Test (M7 Side)
  *
- * Cortex-M7 Core Responsibilities:
- * - Display management (GIGA R1 WiFi display)
- * - Process status events from M4 core
- * - Future: Jetson communication, navigation IMU
+ * Tests bidirectional intercore communication via InstinctusKit EventQueue:
+ *   - Initializes shared queues (M7 must run first)
+ *   - Sends a ping command to M4 every 2 seconds
+ *   - Prints every event received from M4 to Serial
  *
- * Current Mode: Hardware Validation Display
- * - Receives IMU data from M4
- * - Receives collision warnings from M4
- * - Displays real-time sensor status
+ * Load order: flash THIS sketch first, then flash test_minimal_m4.
+ * Monitor Serial here at 115200 baud.
+ *
+ * Expected output:
+ *   [M7] Queues initialized
+ *   [M7] TX ping:0 to M4 ... OK
+ *   [M7] RX SYSTEM_STARTUP  : m4_ready
+ *   [M7] RX BALANCE_STATUS  : count:0
+ *   [M7] RX SYSTEM_HEALTH   : ack:ping:0
+ *   [M7] RX BALANCE_STATUS  : count:1
+ *   ...
+ *   [M7] Stats  rx=4  m4Q=0  m7Q=0
  */
 
-#include <BalancerKit.h>
-#include "TerminalDisplay.h"
+#include <InstinctusKit.h>
+#include <RPC.h>
 
-// Display instance
-TerminalDisplay display;
+// Timing
+unsigned long lastPingMs  = 0;
+unsigned long lastStatsMs = 0;
+const unsigned long PING_INTERVAL  = 2000;
+const unsigned long STATS_INTERVAL = 5000;
 
-// Timing variables
-unsigned long lastDisplayUpdate = 0;
-const unsigned long DISPLAY_UPDATE_INTERVAL = 100;  // 10Hz display refresh
+uint32_t pingCount = 0;
+uint32_t rxCount   = 0;
 
-// Status tracking
-unsigned long eventsReceived = 0;
-unsigned long lastEventTime = 0;
+// Giga built-in LEDs are active-low
+static void blinkLED(int pin, int durationMs = 50) {
+    digitalWrite(pin, LOW);
+    delay(durationMs);
+    digitalWrite(pin, HIGH);
+}
 
 void setup() {
-  // Initialize serial communication
-  Serial.begin(115200);
-  delay(100);
+    pinMode(LEDR, OUTPUT);
+    pinMode(LEDG, OUTPUT);
+    pinMode(LEDB, OUTPUT);
+    digitalWrite(LEDR, HIGH);
+    digitalWrite(LEDG, HIGH);
+    digitalWrite(LEDB, HIGH);
 
-  Serial.println("===========================================");
-  Serial.println("  Balancer M7 Core - Display & Monitoring");
-  Serial.println("===========================================");
-  Serial.println();
+    // M7 owns queue initialization — must happen before M4 tries to use them
+    RPC.begin(); //boot M4
+    m4EventQueue.initialize(HSEM_ID_M4_QUEUE);
+    m7EventQueue.initialize(HSEM_ID_M7_QUEUE);
 
-  // Initialize display
-  Serial.print("Initializing display... ");
-  display.initialize();
-  display.println("=== M7 CORE STARTING ===", TerminalDisplay::GREEN_COLOR);
-  Serial.println("OK");
+    Serial.begin(115200);
+    delay(150);  // Brief pause for USB CDC to enumerate; Don't use while(!Serial) - casues M4 Problems
+    
+    // initialize dsiplay here
 
-  // Initialize dual event queues (shared between M4 and M7 cores)
-  Serial.print("Initializing event queues... ");
-  m4EventQueue.initialize();    // M4 processes this queue
-  m7EventQueue.initialize();    // M7 processes this queue
-  display.println("Event queues initialized", TerminalDisplay::GREEN_COLOR);
-  Serial.println("OK");
+    lastPingMs  = millis();
+    lastStatsMs = millis();
 
-  // Send startup broadcast event
-  Serial.print("Broadcasting startup event... ");
-  EventBroadcaster::broadcastEvent(EVENT_SYSTEM_STARTUP, "M7 ready");
-  display.println("Startup event sent", TerminalDisplay::GREEN_COLOR);
-  Serial.println("OK");
-
-  Serial.println();
-  Serial.println("M7 Core Initialized");
-  Serial.println("Waiting for M4 events...");
-  Serial.println();
-
-  display.println("", TerminalDisplay::TEXT_COLOR);
-  display.println("=== WAITING FOR M4 DATA ===", TerminalDisplay::YELLOW_COLOR);
-  display.println("", TerminalDisplay::TEXT_COLOR);
-
-  lastEventTime = millis();
+    EventBroadcaster::broadcastEvent(EVENT_SYSTEM_STARTUP, "M7 Initialized");
+    blinkLED(LEDR);delay(50);blinkLED(LEDG);delay(50);blinkLED(LEDB);delay(1000);
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
+    // blinkLED(LEDR);delay(50);blinkLED(LEDG);delay(50);blinkLED(LEDB);delay(1000);
+    unsigned long now = millis();
 
-  // Process M7 events (from M4, Jetson, other M7 components, or broadcasts)
-  EventType eventType;
-  char eventBuffer[64];
+    // 1. Send periodic ping command to M4
+    if (now - lastPingMs >= PING_INTERVAL) {
+        char msg[32];
+        snprintf(msg, sizeof(msg), "ping:%lu", pingCount);
 
-  while (m7EventQueue.pop(eventType, eventBuffer)) {
-    eventsReceived++;
-    lastEventTime = currentMillis;
+        bool ok = EventBroadcaster::sendToM4(EVENT_EMERGENCY_STOP, msg);
+        Serial.print("M7 TX ");
+        Serial.print(msg);
+        Serial.print(" to M4 ... ");
+        Serial.println(ok ? "OK" : "QUEUE FULL");
 
-    // Process and display the event
-    processStatusEvent(eventType, eventBuffer);
-
-    // Log to serial
-    Serial.print("M7 Event #");
-    Serial.print(eventsReceived);
-    Serial.print(": Type=");
-    Serial.print((int)eventType);
-    Serial.print(" Data=");
-    Serial.println(eventBuffer ? eventBuffer : "(none)");
-  }
-
-  // Check for M4 timeout (no events received in 5 seconds)
-  if (currentMillis - lastEventTime > 5000 && eventsReceived > 0) {
-    if ((currentMillis / 1000) % 10 == 0) {  // Print once every 10 seconds
-      display.println("WARNING: No M4 events", TerminalDisplay::RED_COLOR);
+        pingCount++;
+        lastPingMs = now;
     }
-  }
 
-  delay(10);
-}
+    // 2. Drain m7EventQueue — print everything M4 sent
+    EventType eventType;
+    char eventData[EVENT_MESSAGE_SIZE];
 
-// Process status events from M4
-void processStatusEvent(EventType eventType, const char* eventData) {
-  char displayBuffer[80];
+    while (m7EventQueue.pop(eventType, eventData)) {
 
-  switch(eventType) {
-    case EVENT_SYSTEM_HEALTH:
-      // M4 sends: "Tilt:2.35° F:450 R:1200"
-      // or: "M4 initialized" or "M4 hardware validation mode"
-      if (eventData && (strstr(eventData, "Tilt:") || strstr(eventData, "T:"))) {
-        // Parse sensor data
-        snprintf(displayBuffer, sizeof(displayBuffer), "M4: %s", eventData);
-        display.println(displayBuffer, TerminalDisplay::GREEN_COLOR);
-      } else {
-        // Status message
-        snprintf(displayBuffer, sizeof(displayBuffer), "M4: %s",
-                 eventData ? eventData : "Health OK");
-        display.println(displayBuffer, TerminalDisplay::BLUE_COLOR);
-      }
-      break;
+        Serial.print("[M7] RX ");
+        switch (eventType) {
+            case EVENT_SYSTEM_STARTUP:   Serial.print("SYSTEM_STARTUP "); break;
+            case EVENT_BALANCE_IMU_DATA: Serial.print("BALANCE_DATA   "); break;
+            // case EVENT_TOF_FRONT_DATA:   Serial.print("TOF_FRONT_DATA "); break;
+            // case EVENT_TOF_REAR_DATA:    Serial.print("TOF_REAR_DATA  "); break;
+            // case EVENT_EMERGENCY_STOP:   Serial.print("EMERGENCY_STOP "); break;
+            default:
+                Serial.print("type=");
+                Serial.print((int)eventType);
+                Serial.print("         ");
+                break;
+        }
+        Serial.print(": ");
+        Serial.println(eventData);
+    }
 
-    case EVENT_BALANCE_STATUS:
-      // Balance update from M4
-      snprintf(displayBuffer, sizeof(displayBuffer), "Balance: %s",
-               eventData ? eventData : "OK");
-      display.println(displayBuffer, TerminalDisplay::TEXT_COLOR);
-      break;
-
-    case EVENT_COLLISION_WARNING:
-      // Obstacle detected: "Forward obstacle: 85 mm" or "Rear obstacle: 92 mm"
-      snprintf(displayBuffer, sizeof(displayBuffer), "!!! %s !!!",
-               eventData ? eventData : "COLLISION WARNING");
-      display.println(displayBuffer, TerminalDisplay::RED_COLOR);
-
-      // Also log prominently to serial
-      Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-      Serial.print("COLLISION WARNING: ");
-      Serial.println(eventData ? eventData : "(no details)");
-      Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-      break;
-
-    case EVENT_EMERGENCY_STOP:
-      snprintf(displayBuffer, sizeof(displayBuffer), "*** EMERGENCY STOP ***");
-      display.println(displayBuffer, TerminalDisplay::RED_COLOR);
-
-      Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-      Serial.println("  EMERGENCY STOP EVENT RECEIVED");
-      Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-      break;
-
-    case EVENT_SYSTEM_STARTUP:
-      snprintf(displayBuffer, sizeof(displayBuffer), "System: %s",
-               eventData ? eventData : "STARTUP");
-      display.println(displayBuffer, TerminalDisplay::GREEN_COLOR);
-      break;
-
-    case EVENT_SAFETY_ALERT:
-      snprintf(displayBuffer, sizeof(displayBuffer), "SAFETY: %s",
-               eventData ? eventData : "Alert!");
-      display.println(displayBuffer, TerminalDisplay::RED_COLOR);
-
-      Serial.print("SAFETY ALERT: ");
-      Serial.println(eventData ? eventData : "(no details)");
-      break;
-
-    case EVENT_MOTOR_STATUS:
-      snprintf(displayBuffer, sizeof(displayBuffer), "Motors: %s",
-               eventData ? eventData : "Status update");
-      display.println(displayBuffer, TerminalDisplay::YELLOW_COLOR);
-      break;
-
-    default:
-      snprintf(displayBuffer, sizeof(displayBuffer), "Unknown Event %d: %s",
-               (int)eventType, eventData ? eventData : "(no data)");
-      display.println(displayBuffer, TerminalDisplay::RED_COLOR);
-
-      Serial.print("WARNING: Unknown event type: ");
-      Serial.println((int)eventType);
-      break;
-  }
+    // 3. Periodic stats
+    if (now - lastStatsMs >= STATS_INTERVAL) {
+        Serial.print("M7 BX M4Q: ");
+        Serial.print(EventBroadcaster::getM4QueueCount());
+        Serial.print(" M7Q: ");
+        Serial.println(EventBroadcaster::getM7QueueCount());
+        lastStatsMs = now;
+    }
+    delay(10);
 }

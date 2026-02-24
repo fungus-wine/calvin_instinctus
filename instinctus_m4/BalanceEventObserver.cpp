@@ -6,7 +6,7 @@
  * generic inter-core events that can be processed by the M7 core.
  * 
  * Event Types Used:
- * - EVENT_BALANCE_STATUS: Regular tilt angle updates sent to M7
+ * - EVENT_BALANCE_IMU_DATA: Regular tilt angle updates sent to M7
  * - EVENT_EMERGENCY_STOP: Critical tilt conditions broadcast to both cores
  * 
  * Implementation Notes:
@@ -24,7 +24,7 @@ void BalanceEventObserver::onTiltChange(float angle) {
     sprintf(angleStr, "%.2f", angle);
     
     // Send balance status to M7 core for display/logging
-    EventBroadcaster::sendToM7(EVENT_BALANCE_STATUS, angleStr);
+    EventBroadcaster::sendToM7(EVENT_BALANCE_IMU_DATA, angleStr);
 }
 
 void BalanceEventObserver::onBalanceEmergency(float angle) {
