@@ -25,13 +25,8 @@
 #include <RPC.h>
 
 // Timing
-unsigned long lastPingMs  = 0;
-unsigned long lastStatsMs = 0;
-const unsigned long PING_INTERVAL  = 2000;
-const unsigned long STATS_INTERVAL = 5000;
-
-uint32_t pingCount = 0;
-uint32_t rxCount   = 0;
+unsigned long lastQueueCount = 0;
+const unsigned long QUEUE_COUNT_INTERVAL = 5000;
 
 // Giga built-in LEDs are active-low
 static void blinkLED(int pin, int durationMs = 50) {
@@ -49,58 +44,42 @@ void setup() {
     digitalWrite(LEDB, HIGH);
 
     // M7 owns queue initialization — must happen before M4 tries to use them
-    RPC.begin(); //boot M4
     m4EventQueue.initialize(HSEM_ID_M4_QUEUE);
     m7EventQueue.initialize(HSEM_ID_M7_QUEUE);
+    RPC.begin(); //boot M4
 
     Serial.begin(115200);
     delay(150);  // Brief pause for USB CDC to enumerate; Don't use while(!Serial) - casues M4 Problems
     
     // initialize dsiplay here
 
-    lastPingMs  = millis();
-    lastStatsMs = millis();
+    lastQueueCount = millis();
 
     EventBroadcaster::broadcastEvent(EVENT_SYSTEM_STARTUP, "M7 Initialized");
     blinkLED(LEDR);delay(50);blinkLED(LEDG);delay(50);blinkLED(LEDB);delay(1000);
 }
 
 void loop() {
-    // blinkLED(LEDR);delay(50);blinkLED(LEDG);delay(50);blinkLED(LEDB);delay(1000);
     unsigned long now = millis();
 
-    // 1. Send periodic ping command to M4
-    if (now - lastPingMs >= PING_INTERVAL) {
-        char msg[32];
-        snprintf(msg, sizeof(msg), "ping:%lu", pingCount);
-
-        bool ok = EventBroadcaster::sendToM4(EVENT_EMERGENCY_STOP, msg);
-        Serial.print("M7 TX ");
-        Serial.print(msg);
-        Serial.print(" to M4 ... ");
-        Serial.println(ok ? "OK" : "QUEUE FULL");
-
-        pingCount++;
-        lastPingMs = now;
-    }
-
-    // 2. Drain m7EventQueue — print everything M4 sent
+    // Drain m7EventQueue
     EventType eventType;
     char eventData[EVENT_MESSAGE_SIZE];
 
     while (m7EventQueue.pop(eventType, eventData)) {
-
-        Serial.print("[M7] RX ");
         switch (eventType) {
-            case EVENT_SYSTEM_STARTUP:   Serial.print("SYSTEM_STARTUP "); break;
-            case EVENT_BALANCE_IMU_DATA: Serial.print("BALANCE_DATA   "); break;
+            case EVENT_SYSTEM_STARTUP:   
+                Serial.print("SYSTEM_STARTUP");
+                break;
+            case EVENT_BALANCE_IMU_DATA: 
+                Serial.print("BALANCE_DATA");
+                break;
             // case EVENT_TOF_FRONT_DATA:   Serial.print("TOF_FRONT_DATA "); break;
             // case EVENT_TOF_REAR_DATA:    Serial.print("TOF_REAR_DATA  "); break;
             // case EVENT_EMERGENCY_STOP:   Serial.print("EMERGENCY_STOP "); break;
             default:
                 Serial.print("type=");
-                Serial.print((int)eventType);
-                Serial.print("         ");
+                Serial.print((int)eventType);;
                 break;
         }
         Serial.print(": ");
@@ -108,12 +87,12 @@ void loop() {
     }
 
     // 3. Periodic stats
-    if (now - lastStatsMs >= STATS_INTERVAL) {
-        Serial.print("M7 BX M4Q: ");
+    if (now - lastQueueCount >= QUEUE_COUNT_INTERVAL) {
+        Serial.print("M4Q: ");
         Serial.print(EventBroadcaster::getM4QueueCount());
         Serial.print(" M7Q: ");
         Serial.println(EventBroadcaster::getM7QueueCount());
-        lastStatsMs = now;
+        lastQueueCount = now;
     }
     delay(10);
 }

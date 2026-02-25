@@ -7,12 +7,26 @@
 
 #include <InstinctusKit.h>
 #include <RPC.h>
+#include "ICM20948Interface.h"
+#include "BalanceIMU.h"
+#include "BalanceEventObserver.h"
 
 // Timing
-unsigned long lastSendMs = 0;
-const unsigned long SEND_INTERVAL = 1000;  // 1 Hz status to M7
+unsigned long lastIMUData = 0;
+const unsigned long IMU_DATA_INTERVAL = 500;
 
-uint32_t sentCount = 0;
+// Create IMU hardware interface
+ICM20948Interface imuHardware;
+BalanceIMU balanceIMU(&imuHardware);
+BalanceEventObserver balanceEventObserver;
+
+float ax;
+float ay;
+float az; 
+float gx;
+float gy;
+float gz;
+float tiltAngle;
 
 // Giga built-in LEDs are active-low
 static void blinkLED(int pin, int durationMs = 50) {
@@ -20,6 +34,7 @@ static void blinkLED(int pin, int durationMs = 50) {
     delay(durationMs);
     digitalWrite(pin, HIGH);
 }
+
 
 void setup() {
     pinMode(LEDR, OUTPUT);
@@ -29,7 +44,6 @@ void setup() {
     digitalWrite(LEDG, HIGH);
     digitalWrite(LEDB, HIGH);
 
-
     RPC.begin();
     // Spin until M7 signals that queues are initialized and serial bridge is ready.
     // M7 pushes EVENT_SYSTEM_STARTUP after completing its own setup(), so by the
@@ -37,30 +51,37 @@ void setup() {
     EventType startType;
     while (!m4EventQueue.pop(startType, nullptr) || startType != EVENT_SYSTEM_STARTUP);
 
-    lastSendMs = millis();
+    balanceIMU.addObserver(&balanceEventObserver);
+    balanceIMU.initialize();
+
+    lastIMUData = millis();
     EventBroadcaster::sendToM7(EVENT_SYSTEM_STARTUP, "M4 Initialized");
     //visual cue that M4 is initialized
     blinkLED(LEDB);delay(50);blinkLED(LEDB);delay(50);blinkLED(LEDB);delay(1000);
 }
 
 void loop() {
-    // blinkLED(LEDB);delay(50);blinkLED(LEDB);delay(50);blinkLED(LEDB);delay(1000);
+    balanceIMU.update();
     unsigned long now = millis();
     
     // Send periodic sensor data event to M7
-    if (now - lastSendMs >= SEND_INTERVAL) {
+    if (now - lastIMUData >= IMU_DATA_INTERVAL) {
 
         // get IMU Data
-        // tiltAngle = balanceIMU.getTiltAngle();
-        // balanceIMU.getAcceleration(ax, ay, az);
-        // balanceIMU.getAngularVelocity(gx, gy, gz);
+        tiltAngle = balanceIMU.getTiltAngle();
+        balanceIMU.getAcceleration(ax, ay, az);
+        balanceIMU.getAngularVelocity(gx, gy, gz);
 
-        bool ok = EventBroadcaster::sendToM7(EVENT_BALANCE_IMU_DATA, "x,y,z,rx,ry,rz,tilt");
+        char msg[EVENT_MESSAGE_SIZE];
+        snprintf(msg, sizeof(msg), "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f",
+           ax, ay, az, gx, gy, gz, tiltAngle);
+
+        bool ok = EventBroadcaster::sendToM7(EVENT_BALANCE_IMU_DATA, msg);
         if (!ok) {
             blinkLED(LEDR);
         }
 
-        lastSendMs = now;
+        lastIMUData = now;
     }
 
     // Drain m4EventQueue — process commands from M7
