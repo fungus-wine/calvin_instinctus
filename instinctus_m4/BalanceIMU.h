@@ -58,39 +58,36 @@ class BalanceObserver;
 class BalanceIMU {
 private:
     IMUInterface* imu;
-    static constexpr uint8_t MAX_OBSERVERS = 8;
-    BalanceObserver* observers[MAX_OBSERVERS];
-    uint8_t observerCount;
-    
+    BalanceObserver* _observer;
+
     // Current sensor readings
     float accelX, accelY, accelZ;
     float gyroX, gyroY, gyroZ;
-    
+
     // Calculated balance values
     float currentTiltAngle;
-    
+
     // Configuration
     static constexpr float TILT_ALPHA = 0.98; // Complementary filter coefficient
-    
+
     unsigned long lastUpdateTime;
-    
+
     // Internal calculation methods
     float calculateTiltFromAccel();
     float applyComplementaryFilter(float accelTilt, float gyroRate, float deltaTime);
-    
+
 public:
     /**
-     * Constructor - only IMU hardware required, observers added separately
+     * Constructor - only IMU hardware required, observer set separately
      * @param imuHardware - pointer to IMU hardware implementation
      */
     BalanceIMU(IMUInterface* imuHardware);
-    
+
     /**
-     * Add a balance observer to receive balance events
-     * @param observer - pointer to observer object (cannot be null)
-     * @return true if observer added successfully, false if max observers reached
+     * Set the balance observer to receive balance events
+     * @param observer - pointer to observer object
      */
-    bool addObserver(BalanceObserver* observer);
+    void setObserver(BalanceObserver* observer);
     
     
     /**

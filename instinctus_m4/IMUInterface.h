@@ -21,7 +21,7 @@
  * 
  * Example:
  *   ICM20948Interface imuHardware;
- *   BalanceIMU balanceIMU(&imuHardware, &observer);
+ *   BalanceIMU balanceIMU(&imuHardware);
  */
 class IMUInterface {
 public:

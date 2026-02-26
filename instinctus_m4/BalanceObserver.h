@@ -15,8 +15,8 @@
  * - Real-time friendly - callbacks designed for fast execution
  * 
  * Event Types:
- * - onTiltChange: Called when tilt angle changes significantly (>1°)
- * - onBalanceEmergency: Called when robot tilts dangerously (>45°)
+ * - onTiltChange: Called when tilt angle changes significantly (e.g.>1°)
+ * - onBalanceEmergency: Called when robot tilts dangerously (e.g. >45°)
  * 
  * Usage Pattern:
  * 1. Create a class that implements BalanceObserver
@@ -35,9 +35,8 @@
  *   };
  * 
  * Performance Notes:
- * - Callbacks are called from BalanceIMU::update() (typically 100Hz)
+ * - Callbacks are called from BalanceIMU::update()
  * - Keep callback implementations fast and non-blocking
- * - Avoid Serial.print() in production code (use for debugging only)
  */
 class BalanceObserver {
 public:

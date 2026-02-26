@@ -24,8 +24,11 @@
 - **Connectivity**: WiFi, USB, CAN, I2C (x2), SPI, UART (x4)
 
 **Sensors:**
-- ICM20948 9-axis IMU (I2C 0x69) - Balance sensing
-- 2x VL53L4CX ToF sensors (I2C 0x29) - Collision detection
+- ICM20948 9-axis IMU (I2C Wire, 0x69) - Balance sensing
+- 2x VL53L4CX ToF sensors (I2C Wire, rear 0x30 / front 0x29) - Collision detection
+  - Both on same bus (Wire), differentiated via XSHUT pins (rear=D31, front=D32)
+  - On boot: both XSHUT LOW, then rear brought up and reprogrammed to 0x30, then front brought up at default 0x29
+  - XSHUT ensures clean power cycle on every MCU reset
 - INA228 power monitor (I2C 0x40) - Battery monitoring
 
 **Actuators:**
@@ -76,20 +79,13 @@ struct EventItem {
 **Event Types:**
 
 M4 → M7 (Status):
-- `EVENT_BALANCE_STATUS` - Tilt: "2.35"
-- `EVENT_MOTOR_STATUS` - Motors: "left:100,right:98"
-- `EVENT_SAFETY_ALERT` - Warnings
-- `EVENT_COLLISION_WARNING` - Obstacles
-- `EVENT_SYSTEM_HEALTH` - Metrics
+- TBD
 
 M7 → M4 (Commands):
-- `EVENT_SET_TARGET_POSITION` - Move: "150,150"
-- `EVENT_SET_TARGET_HEADING` - Turn: "45"
-- `EVENT_SET_POSITION_LIMITS` - Safety
-- `EVENT_EMERGENCY_STOP` - Stop now
+- TBD
 
 Broadcast (Both):
-- `EVENT_SYSTEM_STARTUP`, `EVENT_BATTERY_LOW`, `EVENT_SYSTEM_SHUTDOWN`
+- TBD
 
 **EventBroadcaster API:**
 ```cpp

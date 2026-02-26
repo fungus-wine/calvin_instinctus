@@ -1,26 +1,3 @@
-
-/**
- * test_minimal_m7.ino - Minimal Intercore Queue Test (M7 Side)
- *
- * Tests bidirectional intercore communication via InstinctusKit EventQueue:
- *   - Initializes shared queues (M7 must run first)
- *   - Sends a ping command to M4 every 2 seconds
- *   - Prints every event received from M4 to Serial
- *
- * Load order: flash THIS sketch first, then flash test_minimal_m4.
- * Monitor Serial here at 115200 baud.
- *
- * Expected output:
- *   [M7] Queues initialized
- *   [M7] TX ping:0 to M4 ... OK
- *   [M7] RX SYSTEM_STARTUP  : m4_ready
- *   [M7] RX BALANCE_STATUS  : count:0
- *   [M7] RX SYSTEM_HEALTH   : ack:ping:0
- *   [M7] RX BALANCE_STATUS  : count:1
- *   ...
- *   [M7] Stats  rx=4  m4Q=0  m7Q=0
- */
-
 #include <InstinctusKit.h>
 #include <RPC.h>
 
@@ -50,8 +27,6 @@ void setup() {
 
     Serial.begin(115200);
     delay(150);  // Brief pause for USB CDC to enumerate; Don't use while(!Serial) - casues M4 Problems
-    
-    // initialize dsiplay here
 
     lastQueueCount = millis();
 
@@ -62,7 +37,7 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // Drain m7EventQueue
+    // handle events
     EventType eventType;
     char eventData[EVENT_MESSAGE_SIZE];
 
@@ -74,9 +49,12 @@ void loop() {
             case EVENT_BALANCE_IMU_DATA: 
                 Serial.print("BALANCE_DATA");
                 break;
-            // case EVENT_TOF_FRONT_DATA:   Serial.print("TOF_FRONT_DATA "); break;
-            // case EVENT_TOF_REAR_DATA:    Serial.print("TOF_REAR_DATA  "); break;
-            // case EVENT_EMERGENCY_STOP:   Serial.print("EMERGENCY_STOP "); break;
+            case EVENT_TOF_DATA: 
+                Serial.print("TOF_DATA");
+                break;
+            case EVENT_PROXIMITY_WARNING: 
+                Serial.print("PROXIMITY_WARNING");
+                break;
             default:
                 Serial.print("type=");
                 Serial.print((int)eventType);;
@@ -86,7 +64,7 @@ void loop() {
         Serial.println(eventData);
     }
 
-    // 3. Periodic stats
+    // queue status reprort
     if (now - lastQueueCount >= QUEUE_COUNT_INTERVAL) {
         Serial.print("M4Q: ");
         Serial.print(EventBroadcaster::getM4QueueCount());

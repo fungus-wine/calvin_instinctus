@@ -1,8 +1,5 @@
 /**
- * test_minimal_m4.ino - Minimal Intercore Queue Test (M4 Side)
- *
  * Load order: flash M7 first (it initializes shared queues), then M4.
- * Monitor Serial on the M7 side to observe bidirectional traffic.
  */
 
 #include <InstinctusKit.h>
@@ -10,23 +7,40 @@
 #include "ICM20948Interface.h"
 #include "BalanceIMU.h"
 #include "BalanceEventObserver.h"
+#include "VL53L4CXInterface.h"
+#include "ToFSensor.h"
+#include "ObstacleEventObserver.h"
 
 // Timing
 unsigned long lastIMUData = 0;
+unsigned long lastToFData = 0;
 const unsigned long IMU_DATA_INTERVAL = 500;
+const unsigned long TOF_DATA_INTERVAL = 500;
 
-// Create IMU hardware interface
+// IMU: ICM20948 on Wire at 0x69
 ICM20948Interface imuHardware;
 BalanceIMU balanceIMU(&imuHardware);
 BalanceEventObserver balanceEventObserver;
 
-float ax;
-float ay;
-float az; 
-float gx;
-float gy;
-float gz;
+// ToF: Both VL53L4CX on Wire (I2C0), differentiated by XSHUT pins.
+// On boot, both are shut down, then brought up one at a time to assign
+// unique addresses: rear gets 0x30, front keeps default 0x29.
+const int REAR_TOF_XSHUT = 31;
+const int FRONT_TOF_XSHUT = 32;
+
+VL53L4CXInterface rearToFHardware(&Wire, REAR_TOF_XSHUT, 0x30);
+ToFSensor rearToF(&rearToFHardware);
+ObstacleEventObserver rearObstacleObserver("rear", 20.0f);
+
+VL53L4CXInterface frontToFHardware(&Wire, FRONT_TOF_XSHUT, 0x29);
+ToFSensor frontToF(&frontToFHardware);
+ObstacleEventObserver frontObstacleObserver("front", 20.0f);
+
+float ax, ay, az;
+float gx, gy, gz;
 float tiltAngle;
+float frontDistance;
+float rearDistance;
 
 // Giga built-in LEDs are active-low
 static void blinkLED(int pin, int durationMs = 50) {
@@ -51,10 +65,32 @@ void setup() {
     EventType startType;
     while (!m4EventQueue.pop(startType, nullptr) || startType != EVENT_SYSTEM_STARTUP);
 
-    balanceIMU.addObserver(&balanceEventObserver);
+    balanceIMU.setObserver(&balanceEventObserver);
     balanceIMU.initialize();
 
+    // Shut down both ToF sensors before initializing either one.
+    // This ensures a clean state and allows sequential address assignment.
+    pinMode(REAR_TOF_XSHUT, OUTPUT);
+    pinMode(FRONT_TOF_XSHUT, OUTPUT);
+    digitalWrite(REAR_TOF_XSHUT, LOW);
+    digitalWrite(FRONT_TOF_XSHUT, LOW);
+    delay(10);
+
+    // Initialize ToF sensors one at a time — each InitSensor() brings up
+    // its sensor via XSHUT and assigns its address while the other stays off.
+    // Rear first (reprogrammed to 0x30), then front (keeps default 0x29).
+    rearToF.setObserver(&rearObstacleObserver);
+    if (!rearToF.initialize()) {
+        EventBroadcaster::sendToM7(EVENT_SYSTEM_STARTUP, "Rear ToF init failed");
+    }
+
+    frontToF.setObserver(&frontObstacleObserver);
+    if (!frontToF.initialize()) {
+        EventBroadcaster::sendToM7(EVENT_SYSTEM_STARTUP, "Front ToF init failed");
+    }
+
     lastIMUData = millis();
+    lastToFData = millis();
     EventBroadcaster::sendToM7(EVENT_SYSTEM_STARTUP, "M4 Initialized");
     //visual cue that M4 is initialized
     blinkLED(LEDB);delay(50);blinkLED(LEDB);delay(50);blinkLED(LEDB);delay(1000);
@@ -62,12 +98,11 @@ void setup() {
 
 void loop() {
     balanceIMU.update();
+    frontToF.update();
+    rearToF.update();
     unsigned long now = millis();
-    
-    // Send periodic sensor data event to M7
-    if (now - lastIMUData >= IMU_DATA_INTERVAL) {
 
-        // get IMU Data
+    if (now - lastIMUData >= IMU_DATA_INTERVAL) {
         tiltAngle = balanceIMU.getTiltAngle();
         balanceIMU.getAcceleration(ax, ay, az);
         balanceIMU.getAngularVelocity(gx, gy, gz);
@@ -84,33 +119,28 @@ void loop() {
         lastIMUData = now;
     }
 
+    if (now - lastToFData >= TOF_DATA_INTERVAL) {
+        frontDistance = frontToF.getDistance();
+        rearDistance = rearToF.getDistance();
+
+        char msg[EVENT_MESSAGE_SIZE];
+        snprintf(msg, sizeof(msg), "%.0f,%.0f", frontDistance, rearDistance);
+
+        bool ok = EventBroadcaster::sendToM7(EVENT_TOF_DATA, msg);
+        if (!ok) {
+            blinkLED(LEDR);
+        }
+
+        lastToFData = now;
+    }
+
     // Drain m4EventQueue — process commands from M7
     EventType eventType;
     char eventData[EVENT_MESSAGE_SIZE];
 
     while (m4EventQueue.pop(eventType, eventData)) {
-    // blinkLED(LEDR);delay(50);blinkLED(LEDR);delay(50);blinkLED(LEDR);
-        // switch (eventType) {
-        //     case EVENT_SYSTEM_STARTUP:  blinkLED(LEDR); break;
-        //     case EVENT_EMERGENCY_STOP:  blinkLED(LEDG); break;
-        //     default:
-        //         blinkLED(LEDB);
-        //         break;
-        // }
+        // TODO: handle M7 commands
     }
 
-
-    // EventType eventType;
-    // char eventData[EVENT_MESSAGE_SIZE];
-
-    // while (m4EventQueue.pop(eventType, eventData)) {
-    //     blinkLED(LEDB);  // Blue  = received from M7
-
-    //     // Echo back so M7 can confirm round-trip
-    //     char reply[EVENT_MESSAGE_SIZE];
-    //     snprintf(reply, sizeof(reply), "ack:%s", eventData);
-    //     EventBroadcaster::sendToM7(EVENT_SYSTEM_HEALTH, reply);
-    // }
-    // delay(System::MAIN_LOOP_DELAY);
-    delay(10);
+    delay(9);
 }

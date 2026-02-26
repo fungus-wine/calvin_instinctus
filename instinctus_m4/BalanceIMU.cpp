@@ -36,26 +36,16 @@
 #include <Arduino.h>
 #include <math.h>
 
-BalanceIMU::BalanceIMU(IMUInterface* imuHardware) 
-    : imu(imuHardware), observerCount(0),
+BalanceIMU::BalanceIMU(IMUInterface* imuHardware)
+    : imu(imuHardware), _observer(nullptr),
       accelX(0), accelY(0), accelZ(0),
       gyroX(0), gyroY(0), gyroZ(0),
       currentTiltAngle(0),
       lastUpdateTime(0) {
-    // Initialize observer array to null pointers
-    for (uint8_t i = 0; i < MAX_OBSERVERS; i++) {
-        observers[i] = nullptr;
-    }
 }
 
-bool BalanceIMU::addObserver(BalanceObserver* observer) {
-    if (!observer || observerCount >= MAX_OBSERVERS) {
-        return false;
-    }
-    
-    observers[observerCount] = observer;
-    observerCount++;
-    return true;
+void BalanceIMU::setObserver(BalanceObserver* observer) {
+    _observer = observer;
 }
 
 bool BalanceIMU::initialize() {
@@ -89,20 +79,16 @@ void BalanceIMU::update() {
     
     // Check for significant tilt change
     float tiltChange = abs(newTiltAngle - currentTiltAngle);
-    if (tiltChange > 1.0) { // Notify on changes > 1 degree
-        for (uint8_t i = 0; i < observerCount; i++) {
-            observers[i]->onTiltChange(newTiltAngle);
-        }
+    if (_observer && tiltChange > 1.0) { // Notify on changes > 1 degree
+        _observer->onTiltChange(newTiltAngle);
     }
-    
+
     // Update current tilt
     currentTiltAngle = newTiltAngle;
-    
+
     // Check for emergency condition (>45 degrees)
-    if (abs(currentTiltAngle) > 45.0) {
-        for (uint8_t i = 0; i < observerCount; i++) {
-            observers[i]->onBalanceEmergency(currentTiltAngle);
-        }
+    if (_observer && abs(currentTiltAngle) > 45.0) {
+        _observer->onBalanceEmergency(currentTiltAngle);
     }
 }
 

@@ -29,8 +29,8 @@
  *   BalanceMotorController motorController(&driveSystem);
  *   BalanceEventObserver eventObserver;
  *
- *   balanceIMU.addObserver(&motorController);  // Real-time motor control
- *   balanceIMU.addObserver(&eventObserver);    // Status to M7
+ *   balanceIMU.setObserver(&motorController);  // Real-time motor control
+ *   balanceIMU.setObserver(&eventObserver);    // Status to M7
  *
  *   // Now BOTH observers get called on every tilt change:
  *   // - motorController adjusts motors immediately
