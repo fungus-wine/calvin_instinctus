@@ -13,9 +13,10 @@
  */
 
 #include "VL53L4CXInterface.h"
+#include <InstinctusKit.h>
 
-VL53L4CXInterface::VL53L4CXInterface(TwoWire* i2cBus, int xshutPin, uint8_t address)
-    : _tof(i2cBus, xshutPin), _i2cAddress(address) {
+VL53L4CXInterface::VL53L4CXInterface(TwoWire* i2cBus, int xshutPin, uint8_t address, uint32_t timingBudgetUs)
+    : _tof(i2cBus, xshutPin), _i2cAddress(address), _timingBudgetUs(timingBudgetUs) {
 }
 
 bool VL53L4CXInterface::initialize() {
@@ -27,7 +28,7 @@ bool VL53L4CXInterface::initialize() {
 
     // Short distance mode for fast collision detection
     _tof.VL53L4CX_SetDistanceMode(VL53L4CX_DISTANCEMODE_SHORT);
-    _tof.VL53L4CX_SetMeasurementTimingBudgetMicroSeconds(33000);
+    _tof.VL53L4CX_SetMeasurementTimingBudgetMicroSeconds(_timingBudgetUs);
 
     return true;
 }
@@ -54,7 +55,7 @@ bool VL53L4CXInterface::readDistance(float& distance) {
 
     // Use the closest valid target
     bool found = false;
-    float closest = 9999.0f;
+    float closest = Config::NO_TARGET_DISTANCE;
     for (int i = 0; i < rangingData.NumberOfObjectsFound; i++) {
         if (rangingData.RangeData[i].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID ||
             rangingData.RangeData[i].RangeStatus == VL53L4CX_RANGESTATUS_RANGE_VALID_MIN_RANGE_CLIPPED) {

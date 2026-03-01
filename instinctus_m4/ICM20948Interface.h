@@ -48,7 +48,7 @@ public:
      * @param i2c_bus - pointer to I2C bus (e.g., &Wire, &Wire1)
      * @param address - I2C address (default 0x69)
      */
-    ICM20948Interface(TwoWire* i2c_bus = &Wire, uint8_t address = 0x69);
+    ICM20948Interface(TwoWire* i2c_bus, uint8_t address);
 
     /**
      * Initialize the ICM20948 sensor

@@ -3,7 +3,6 @@
 
 // Timing
 unsigned long lastQueueCount = 0;
-const unsigned long QUEUE_COUNT_INTERVAL = 5000;
 
 // Giga built-in LEDs are active-low
 static void blinkLED(int pin, int durationMs = 50) {
@@ -25,8 +24,8 @@ void setup() {
     m7EventQueue.initialize(HSEM_ID_M7_QUEUE);
     RPC.begin(); //boot M4
 
-    Serial.begin(115200);
-    delay(150);  // Brief pause for USB CDC to enumerate; Don't use while(!Serial) - casues M4 Problems
+    Serial.begin(Config::SERIAL_BAUD_RATE);
+    delay(Config::USB_ENUM_DELAY_MS);  // Brief pause for USB CDC to enumerate; Don't use while(!Serial) - causes M4 problems
 
     lastQueueCount = millis();
 
@@ -68,7 +67,7 @@ void loop() {
     }
 
     // queue status reprort
-    if (now - lastQueueCount >= QUEUE_COUNT_INTERVAL) {
+    if (now - lastQueueCount >= Config::QUEUE_STATUS_INTERVAL_MS) {
         Serial.print("M4Q: ");
         Serial.print(EventBroadcaster::getM4QueueCount());
         Serial.print(" M7Q: ");

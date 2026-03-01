@@ -67,9 +67,6 @@ private:
     // Calculated balance values
     float currentTiltAngle;
 
-    // Configuration
-    static constexpr float TILT_ALPHA = 0.98; // Complementary filter coefficient
-
     unsigned long lastUpdateTime;
 
     // Internal calculation methods

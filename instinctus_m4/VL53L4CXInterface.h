@@ -31,6 +31,7 @@ class VL53L4CXInterface : public ToFInterface {
 private:
     VL53L4CX _tof;
     uint8_t _i2cAddress;
+    uint32_t _timingBudgetUs;
 
 public:
     /**
@@ -39,7 +40,7 @@ public:
      * @param xshutPin - XSHUT pin for power control (-1 if not connected)
      * @param address - I2C address (default 0x29)
      */
-    VL53L4CXInterface(TwoWire* i2cBus = &Wire, int xshutPin = -1, uint8_t address = 0x29);
+    VL53L4CXInterface(TwoWire* i2cBus, int xshutPin, uint8_t address, uint32_t timingBudgetUs = 33000);
 
     bool initialize() override;
     bool startRanging() override;

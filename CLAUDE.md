@@ -129,10 +129,15 @@ EventBroadcaster::broadcastEvent(EVENT_EMERGENCY_STOP, "collision");
 /Users/damoncali/code/arduino/librarius/InstinctusKit/
 ├── library.properties                 # Arduino library metadata
 └── src/
-    ├── InstinctusKit.h                # Main include (EventBroadcaster)
+    ├── InstinctusKit.h                # Main include (all config + EventBroadcaster)
     ├── EventQueue.{h,cpp}             # Dual-queue system
-    ├── Config.h                       # Constants
-    └── HardwareConfig.h               # Hardware settings
+    └── config/
+        ├── CoordinateTransform.h      # Reusable axis transform struct + applyTransform()
+        ├── BoardConfig.h              # Giga board-level: serial baud, CAN speed
+        ├── IMUConfig.h                # ICM20948: address, ranges, rates, coordinate transform
+        ├── ToFConfig.h                # VL53L4CX: per-instance structs (front/rear)
+        ├── MotorConfig.h              # ODrive: per-instance structs (left/right)
+        └── BalanceConfig.h            # Filter alpha, tilt thresholds, loop timing
 ```
 
 ## Communication Protocols

@@ -14,27 +14,22 @@
 // Timing
 unsigned long lastIMUData = 0;
 unsigned long lastToFData = 0;
-const unsigned long IMU_DATA_INTERVAL = 500;
-const unsigned long TOF_DATA_INTERVAL = 500;
 
-// IMU: ICM20948 on Wire at 0x69
-ICM20948Interface imuHardware;
+// IMU: ICM20948 on Wire
+ICM20948Interface imuHardware(&Wire, Config::IMU_I2C_ADDRESS);
 BalanceIMU balanceIMU(&imuHardware);
 BalanceEventObserver balanceEventObserver;
 
 // ToF: Both VL53L4CX on Wire (I2C0), differentiated by XSHUT pins.
 // On boot, both are shut down, then brought up one at a time to assign
 // unique addresses: rear gets 0x30, front keeps default 0x29.
-const int REAR_TOF_XSHUT = 25;
-const int FRONT_TOF_XSHUT = 23;
-
-VL53L4CXInterface rearToFHardware(&Wire, REAR_TOF_XSHUT, 0x30);
+VL53L4CXInterface rearToFHardware(&Wire, Config::TOF_REAR.xshutPin, Config::TOF_REAR.i2cAddress, Config::TOF_REAR.timingBudgetUs);
 ToFSensor rearToF(&rearToFHardware);
-ObstacleEventObserver rearObstacleObserver("rear", 20.0f);
+ObstacleEventObserver rearObstacleObserver("rear", Config::TOF_REAR.warnDistanceMm);
 
-VL53L4CXInterface frontToFHardware(&Wire, FRONT_TOF_XSHUT, 0x29);
+VL53L4CXInterface frontToFHardware(&Wire, Config::TOF_FRONT.xshutPin, Config::TOF_FRONT.i2cAddress, Config::TOF_FRONT.timingBudgetUs);
 ToFSensor frontToF(&frontToFHardware);
-ObstacleEventObserver frontObstacleObserver("front", 20.0f);
+ObstacleEventObserver frontObstacleObserver("front", Config::TOF_FRONT.warnDistanceMm);
 
 float ax, ay, az;
 float gx, gy, gz;
@@ -69,10 +64,10 @@ void setup() {
 
     // Shut down both ToF sensors before initializing either one.
     // This ensures a clean state and allows sequential address assignment.
-    pinMode(REAR_TOF_XSHUT, OUTPUT);
-    pinMode(FRONT_TOF_XSHUT, OUTPUT);
-    digitalWrite(REAR_TOF_XSHUT, LOW);
-    digitalWrite(FRONT_TOF_XSHUT, LOW);
+    pinMode(Config::TOF_REAR.xshutPin, OUTPUT);
+    pinMode(Config::TOF_FRONT.xshutPin, OUTPUT);
+    digitalWrite(Config::TOF_REAR.xshutPin, LOW);
+    digitalWrite(Config::TOF_FRONT.xshutPin, LOW);
 
     // Initialize ToF sensors one at a time — each InitSensor() brings up
     // its sensor via XSHUT and assigns its address while the other stays off.
@@ -100,7 +95,7 @@ void loop() {
     rearToF.update();
     unsigned long now = millis();
 
-    if (now - lastIMUData >= IMU_DATA_INTERVAL) {
+    if (now - lastIMUData >= Config::IMU_DATA_INTERVAL_MS) {
         tiltAngle = balanceIMU.getTiltAngle();
         balanceIMU.getAcceleration(ax, ay, az);
         balanceIMU.getAngularVelocity(gx, gy, gz);
@@ -117,7 +112,7 @@ void loop() {
         lastIMUData = now;
     }
 
-    if (now - lastToFData >= TOF_DATA_INTERVAL) {
+    if (now - lastToFData >= Config::TOF_DATA_INTERVAL_MS) {
         frontDistance = frontToF.getDistance();
         rearDistance = rearToF.getDistance();
 
@@ -140,5 +135,5 @@ void loop() {
         // TODO: handle M7 commands
     }
 
-    delay(9);
+    delay(Config::M4_LOOP_DELAY_MS);
 }

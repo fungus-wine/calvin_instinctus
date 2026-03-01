@@ -24,11 +24,42 @@
  */
 
 #include "ICM20948Interface.h"
-#include <HardwareConfig.h>
+#include <InstinctusKit.h>
 
 ICM20948Interface::ICM20948Interface(TwoWire* i2c_bus, uint8_t address)
     : wire(i2c_bus), i2cAddress(address) {
     // Constructor - store I2C bus and address for later use
+}
+
+// Map plain int config values to Adafruit library enums
+static icm20948_accel_range_t accelRangeEnum(uint8_t g) {
+    switch (g) {
+        case 2:  return ICM20948_ACCEL_RANGE_2_G;
+        case 4:  return ICM20948_ACCEL_RANGE_4_G;
+        case 8:  return ICM20948_ACCEL_RANGE_8_G;
+        case 16: return ICM20948_ACCEL_RANGE_16_G;
+        default: return ICM20948_ACCEL_RANGE_4_G;
+    }
+}
+
+static icm20948_gyro_range_t gyroRangeEnum(uint16_t dps) {
+    switch (dps) {
+        case 250:  return ICM20948_GYRO_RANGE_250_DPS;
+        case 500:  return ICM20948_GYRO_RANGE_500_DPS;
+        case 1000: return ICM20948_GYRO_RANGE_1000_DPS;
+        case 2000: return ICM20948_GYRO_RANGE_2000_DPS;
+        default:   return ICM20948_GYRO_RANGE_500_DPS;
+    }
+}
+
+static ak09916_data_rate_t magRateEnum(uint8_t hz) {
+    switch (hz) {
+        case 10:  return AK09916_MAG_DATARATE_10_HZ;
+        case 20:  return AK09916_MAG_DATARATE_20_HZ;
+        case 50:  return AK09916_MAG_DATARATE_50_HZ;
+        case 100: return AK09916_MAG_DATARATE_100_HZ;
+        default:  return AK09916_MAG_DATARATE_10_HZ;
+    }
 }
 
 bool ICM20948Interface::initialize() {
@@ -36,15 +67,14 @@ bool ICM20948Interface::initialize() {
     if (!icm.begin_I2C(i2cAddress, wire)) {
         return false;
     }
-    
-    // Configure sensor ranges and rates
-    // Note: These should eventually come from HardwareConfig.h
-    icm.setAccelRange(ICM20948_ACCEL_RANGE_4_G);
-    icm.setGyroRange(ICM20948_GYRO_RANGE_500_DPS);
-    icm.setAccelRateDivisor(4095);  // ~1.1 Hz
-    icm.setGyroRateDivisor(255);    // ~17.8 Hz
-    icm.setMagDataRate(AK09916_MAG_DATARATE_10_HZ);
-    
+
+    // Configure sensor ranges and rates from centralized config
+    icm.setAccelRange(accelRangeEnum(Config::IMU_ACCEL_RANGE_G));
+    icm.setGyroRange(gyroRangeEnum(Config::IMU_GYRO_RANGE_DPS));
+    icm.setAccelRateDivisor(Config::IMU_ACCEL_RATE_DIVISOR);
+    icm.setGyroRateDivisor(Config::IMU_GYRO_RATE_DIVISOR);
+    icm.setMagDataRate(magRateEnum(Config::IMU_MAG_RATE_HZ));
+
     return true;
 }
 
@@ -58,11 +88,11 @@ bool ICM20948Interface::readSensors(float& accelX, float& accelY, float& accelZ,
     }
     
     // Transform raw sensor axes into robot frame (X=forward, Y=left, Z=up)
-    applyTransform(Hardware::BALANCE_IMU_TRANSFORM,
+    applyTransform(Config::BALANCE_IMU_TRANSFORM,
                    accel.acceleration.x, accel.acceleration.y, accel.acceleration.z,
                    accelX, accelY, accelZ);
 
-    applyTransform(Hardware::BALANCE_IMU_TRANSFORM,
+    applyTransform(Config::BALANCE_IMU_TRANSFORM,
                    gyro.gyro.x, gyro.gyro.y, gyro.gyro.z,
                    gyroX, gyroY, gyroZ);
     

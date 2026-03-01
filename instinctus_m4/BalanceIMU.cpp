@@ -34,6 +34,7 @@
 #include "BalanceIMU.h"
 #include "BalanceObserver.h"
 #include <Arduino.h>
+#include <InstinctusKit.h>
 #include <math.h>
 
 BalanceIMU::BalanceIMU(IMUInterface* imuHardware)
@@ -79,15 +80,14 @@ void BalanceIMU::update() {
     
     // Check for significant tilt change
     float tiltChange = abs(newTiltAngle - currentTiltAngle);
-    if (_observer && tiltChange > 1.0) { // Notify on changes > 1 degree
+    if (_observer && tiltChange > Config::TILT_CHANGE_THRESHOLD) {
         _observer->onTiltChange(newTiltAngle);
     }
 
     // Update current tilt
     currentTiltAngle = newTiltAngle;
 
-    // Check for emergency condition (>45 degrees)
-    if (_observer && abs(currentTiltAngle) > 45.0) {
+    if (_observer && abs(currentTiltAngle) > Config::EMERGENCY_TILT_ANGLE) {
         _observer->onBalanceEmergency(currentTiltAngle);
     }
 }
@@ -101,7 +101,7 @@ float BalanceIMU::applyComplementaryFilter(float accelTilt, float gyroRate, floa
     // Complementary filter: blend accelerometer angle with gyroscope rate
     // High-pass filter on gyro, low-pass filter on accelerometer
     float gyroAngle = currentTiltAngle + (gyroRate * 180.0 / PI) * deltaTime;
-    return TILT_ALPHA * gyroAngle + (1.0 - TILT_ALPHA) * accelTilt;
+    return Config::TILT_ALPHA * gyroAngle + (1.0f - Config::TILT_ALPHA) * accelTilt;
 }
 
 float BalanceIMU::getTiltAngle() const {
