@@ -25,8 +25,8 @@ BalanceEventObserver balanceEventObserver;
 // ToF: Both VL53L4CX on Wire (I2C0), differentiated by XSHUT pins.
 // On boot, both are shut down, then brought up one at a time to assign
 // unique addresses: rear gets 0x30, front keeps default 0x29.
-const int REAR_TOF_XSHUT = 31;
-const int FRONT_TOF_XSHUT = 32;
+const int REAR_TOF_XSHUT = 25;
+const int FRONT_TOF_XSHUT = 23;
 
 VL53L4CXInterface rearToFHardware(&Wire, REAR_TOF_XSHUT, 0x30);
 ToFSensor rearToF(&rearToFHardware);
@@ -48,7 +48,6 @@ static void blinkLED(int pin, int durationMs = 50) {
     delay(durationMs);
     digitalWrite(pin, HIGH);
 }
-
 
 void setup() {
     pinMode(LEDR, OUTPUT);
@@ -74,7 +73,6 @@ void setup() {
     pinMode(FRONT_TOF_XSHUT, OUTPUT);
     digitalWrite(REAR_TOF_XSHUT, LOW);
     digitalWrite(FRONT_TOF_XSHUT, LOW);
-    delay(10);
 
     // Initialize ToF sensors one at a time — each InitSensor() brings up
     // its sensor via XSHUT and assigns its address while the other stays off.

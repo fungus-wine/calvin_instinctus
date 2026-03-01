@@ -24,6 +24,7 @@
  */
 
 #include "ICM20948Interface.h"
+#include <HardwareConfig.h>
 
 ICM20948Interface::ICM20948Interface(TwoWire* i2c_bus, uint8_t address)
     : wire(i2c_bus), i2cAddress(address) {
@@ -56,15 +57,14 @@ bool ICM20948Interface::readSensors(float& accelX, float& accelY, float& accelZ,
         return false;
     }
     
-    // Extract accelerometer data (already in m/s²)
-    accelX = accel.acceleration.x;
-    accelY = accel.acceleration.y;
-    accelZ = accel.acceleration.z;
-    
-    // Extract gyroscope data (already in rad/s)
-    gyroX = gyro.gyro.x;
-    gyroY = gyro.gyro.y;
-    gyroZ = gyro.gyro.z;
+    // Transform raw sensor axes into robot frame (X=forward, Y=left, Z=up)
+    applyTransform(Hardware::BALANCE_IMU_TRANSFORM,
+                   accel.acceleration.x, accel.acceleration.y, accel.acceleration.z,
+                   accelX, accelY, accelZ);
+
+    applyTransform(Hardware::BALANCE_IMU_TRANSFORM,
+                   gyro.gyro.x, gyro.gyro.y, gyro.gyro.z,
+                   gyroX, gyroY, gyroZ);
     
     return true;
 }

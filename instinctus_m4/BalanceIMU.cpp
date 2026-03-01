@@ -93,9 +93,7 @@ void BalanceIMU::update() {
 }
 
 float BalanceIMU::calculateTiltFromAccel() {
-    // Calculate tilt angle from accelerometer data
-    // Using atan2 for better handling of edge cases
-    // X-forward coordinate system: X is forward/back axis for balance robot
+    // Tilt around the Y axis: forward/back lean in robot frame (X=forward, Z=up)
     return atan2(accelX, accelZ) * 180.0 / PI;
 }
 

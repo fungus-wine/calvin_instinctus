@@ -55,8 +55,11 @@ void loop() {
             case EVENT_PROXIMITY_WARNING: 
                 Serial.print("PROXIMITY_WARNING");
                 break;
+            case EVENT_EMERGENCY_STOP: 
+                Serial.print("EMERGENY_STOP");
+                break;
             default:
-                Serial.print("type=");
+                Serial.print("event type=");
                 Serial.print((int)eventType);;
                 break;
         }
