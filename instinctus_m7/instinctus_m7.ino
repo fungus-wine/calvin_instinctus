@@ -1,4 +1,5 @@
 #include <InstinctusKit.h>
+#include <GigaEventQueue.h>
 #include <RPC.h>
 
 // Timing

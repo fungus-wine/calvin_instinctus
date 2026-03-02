@@ -3,6 +3,7 @@
  */
 
 #include <InstinctusKit.h>
+#include <GigaEventQueue.h>
 #include <RPC.h>
 #include "ICM20948Interface.h"
 #include "BalanceIMU.h"
