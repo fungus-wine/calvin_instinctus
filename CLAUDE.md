@@ -1,5 +1,8 @@
 # Calvin Instinctus - Project Instructions
 
+## IMPORTANT:##
+The current sate of the code is that the instinctus_m4 firectory is legacy code from the Arduino. The current task is to build up a Teensy 4.1 architecture using similar concepts, but adapted to the single core. the arduino code is just a reference, and should not be used a 1 to 1 template for the Teensy 4.1 code.
+
 ## System Overview
 
 **Calvin Instinctus** is the low-level reflex and motor control system for Calvin, a self-balancing robot. Running on an Arduino Giga R1 WiFi (dual-core ARM), it handles real-time balance control, motor actuation, and safety monitoring.
