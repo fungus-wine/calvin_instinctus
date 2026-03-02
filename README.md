@@ -2,8 +2,7 @@
 
 Calvin is a two-wheeled self-balancing robot with on board AI processing and computer vision. The code for the project is broken into four repos:
 
-- **Calvin Instinctus**: This Repo. Code for the M4 and M7 Cores of the Arduino GIGA R1 Wifi. This provides for Calvin's low level functionality and safety.
-- **InstinctusKit**: Arudino Code that is shared between cores 
+- **Calvin Instinctus**: This Repo. Code for the Teensy 4.1. This provides for Calvin's low level functionality and safety.
 - **Calvin Cogitator**: Code that runs on the Jetson. This is Calvin's high level thought.
 - **Calvin Explorator**: A Electron/Vue.js app that allows for human monitorig from a computer.
 
@@ -12,8 +11,7 @@ The 3D models are still a work in progress and will at some point be shared in a
 ## System Overview
 
 ### Hardware Architecture
-- **Arduino GIGA R1 WiFi**: Dual ARM Cortex cores (M4 + M7)
-- **Arduino GIGA Display**: Dual ARM Cortex cores (M4 + M7)
+- **Teensy 4.1**: ARM Cortex-M7 at 600 MHz
 - **Jetson Orin Nano**: AI processing, SLAM, etc. ZeroMQ with multiple services
 - **OAK-D Pro W**: Stereo Camera with Computer vision AI models on board 
 - **ODrive S1**: Brushless motor controllers with encoders
@@ -22,26 +20,11 @@ The 3D models are still a work in progress and will at some point be shared in a
 - **Seeed Studios ReSpeaker 4 Mic Array**: Voice recognition and direction
 - **Visaton FR58 Speaker Driver with Amp**: Makes noise
 
-### Three-Tier Control System
+### Two-Tier Control System
 
 1. **Jetson Orin Nano**: High-level AI, vision, audio, SLAM, path planning, etc
-2. **Arduino M7**: Communication hub, navigation IMU, display
-3. **Arduino M4**: Real-time balance control, motor control, safety systems
+2. **Teensy 4.1**: Real-time balance control, motor control, safety systems
 
-## Inter-Core Communication Architecture
-
-### Dual Event Queue System
-Event Queues live in shared memory so they can be accessed by either core of the Arduino.
-- **m4EventQueue**: Events for M4 to process (movement, balance parameters)
-- **m7EventQueue**: Events for M7 to process (sensor data, system health)
-- **EventBroadcaster**: Helper for targeted or broadcast events with sendToM4(), sendToM7(), broadcastEvent()
-
-### Data Flow
-```
-Command Flow: Jetson → M7 → EventBroadcaster::sendToM4() → m4EventQueue → M4 → ODrives → Motors
-Status Flow:  M4 → EventBroadcaster::sendToM7() → m7EventQueue → M7 → Display/Jetson
-Safety Flow:  Collision Sensors → EventBroadcaster::broadcastEvent() → Both Cores
-```
 
 ## Development Notes
 - The project uses standard arduino tools. I made and use a wrapper for the arduino-clli tool called grot, and a front end for grot called servitor. There's nothing special about them, though - I just find them convenient.

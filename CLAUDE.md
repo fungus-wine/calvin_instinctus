@@ -16,12 +16,10 @@
 
 ## Hardware Platform
 
-**Arduino Giga R1 WiFi** - Dual-core STM32H747XI
-- **M4 Core** (Cortex-M4 @ 240 MHz) - Real-time control at 100Hz
-- **M7 Core** (Cortex-M7 @ 480 MHz) - Display and communication at 10Hz
-- **RAM**: 1 MB (shared), **Flash**: 2 MB
-- **Display**: Arduino Giga Display Shield 480×320 touchscreen
-- **Connectivity**: WiFi, USB, CAN, I2C (x2), SPI, UART (x4)
+**Teensy 4.1** - Microcontroller
+- **Processor** ARM Cortex-M7 at 600 MHz
+- **Memory** 7936K Flash, 1024K RAM (512K tightly coupled), 4K EEPROM (emulated)
+- **Connectivity**: 8 serial, 3 SPI, 3 I2C ports, 3 CAN Bus (1 with CAN FD)
 
 **Sensors:**
 - ICM20948 9-axis IMU (I2C Wire, 0x69) - Balance sensing and collision detection
@@ -37,7 +35,7 @@
 
 ## Architecture: Dual-Core Responsibilities
 
-### M4 Core (Real-Time, ~100Hz) - CRITICAL TIMING
+### High Priority Tasks - CRITICAL TIMING
 
 **Tasks:**
 1. **Balance Control** - Read IMU, run complementary filter, calculate tilt
@@ -45,108 +43,15 @@
 3. **Collision Detection** - Poll ToF sensors at 20 Hz
 4. **Safety Monitoring** - Tilt limits, battery voltage, emergency stops
 
-**Never block on M4** - No delays >1ms, no Serial.print, no blocking I/O
+**Never block high priority tasks** - No delays >1ms, no Serial.print, no blocking I/O
 
-### M7 Core (~10Hz) - Communication Hub
+### Low Priortiy Tasks - Communication Hub
 
 **Tasks:**
-1. **Display Management** - Render events on touchscreen
-2. **M4 ↔ Jetson Bridge** - Forward status to Jetson, route commands to M4
-3. **Event Processing** - Pop from m7EventQueue, display and forward
+1. **Jetson Bridge** - Forward events to Jetson, route commands to M4
 
-## InstinctusKit Library
-
-- code shared between cores is in the InstinctusKit library
-**Location:** `/Users/damoncali/code/arduino/librarius/InstinctusKit/src/`
-
-### EventQueue System (M4 ↔ M7 Communication)
-
-**Files:** `EventQueue.h`, `EventQueue.cpp`, `InstinctusKit.h`
-
-**Queue Structure:**
-- ring buffers (queue size 6, payload 48 bytes). Both queues must fit in 1kb shared RAM
-
-**Event Item:**
-```cpp
-struct EventItem {
-    EventType type;      // 1 byte enum
-    char text[48];       // 48-byte payload
-    bool read;           // Read flag
-};
-```
-
-**Event Types:**
-
-M4 → M7:
-- TBD
-
-M7 → M4:
-- TBD
-
-Broadcast:
-- TBD
-
-**EventBroadcaster API:**
-```cpp
-#include <InstinctusKit.h>
-
-EventBroadcaster::sendToM4(EVENT_SET_TARGET_POSITION, "150,150");
-EventBroadcaster::sendToM7(EVENT_BALANCE_STATUS, "2.35");
-EventBroadcaster::broadcastEvent(EVENT_EMERGENCY_STOP, "collision");
-```
-
-## Project Structure
-
-```
-/Users/damoncali/code/arduino/calvin_instinctus/
-├── instinctus_m4/                     # M4 Core (Real-time control)
-│   ├── instinctus_m4.ino              # Main M4 program
-│   ├── BalanceIMU.{h,cpp}             # Complementary filter
-│   ├── BalanceMotorController.{h,cpp} # Balance → Motor
-│   ├── BalanceEventObserver.{h,cpp}   # Balance → Events
-│   ├── BalanceObserver.h              # Observer interface for balance
-│   ├── ICM20948Interface.{h,cpp}      # IMU driver
-│   ├── IMUInterface.h                 # IMU abstract interface
-│   ├── DriveCoordinator.{h,cpp}       # Dual motor control
-│   ├── MotorInterface.h               # Motor abstract interface
-│   ├── ToFSensor.{h,cpp}             # ToF sensor manager (multi-sensor)
-│   ├── VL53L4CXInterface.{h,cpp}     # VL53L4CX ToF driver
-│   ├── ToFInterface.h                 # ToF abstract interface
-│   ├── ObstacleEventObserver.{h,cpp}  # Obstacle → Events
-│   ├── ObstacleObserver.h             # Observer interface for obstacles
-│   └── CollisionObserver.h            # Observer interface for collisions
-│
-├── instinctus_m7/                     # M7 Core (Display/Comms)
-│   ├── instinctus_m7.ino              # Main M7 program
-│   └── TerminalDisplay.{h,cpp}        # Touchscreen display
-│
-├── test_i2c_scan/                     # I2C bus scanner test
-│   └── test_i2c_scan.ino
-│
-└── test_tof_sensor/                   # ToF sensor test
-    └── test_tof_sensor.ino
-
-/Users/damoncali/code/arduino/librarius/InstinctusKit/
-├── library.properties                 # Arduino library metadata
-└── src/
-    ├── InstinctusKit.h                # Main include (all config + EventBroadcaster)
-    ├── EventQueue.{h,cpp}             # Dual-queue system
-    └── config/
-        ├── CoordinateTransform.h      # Reusable axis transform struct + applyTransform()
-        ├── BoardConfig.h              # Giga board-level: serial baud, CAN speed
-        ├── IMUConfig.h                # ICM20948: address, ranges, rates, coordinate transform
-        ├── ToFConfig.h                # VL53L4CX: per-instance structs (front/rear)
-        ├── MotorConfig.h              # ODrive: per-instance structs (left/right)
-        └── BalanceConfig.h            # Filter alpha, tilt thresholds, loop timing
-```
 
 ## Communication Protocols
-
-### M4 ↔ M7 (Intercore)
-
-**Protocol:** InstinctusKit EventQueue
-**Method:** Shared memory with atomic operations
-
 
 ### M7 ↔ Jetson (Serial)
 
@@ -157,8 +62,8 @@ EventBroadcaster::broadcastEvent(EVENT_EMERGENCY_STOP, "collision");
 ## Build and Upload
 - This project uses the **Grot** tool (~/code/gems/grot) for building and uploading Arduino sketches.
 - `Users/damoncali/code/gems/grot`
-- Load M7 core before loading M4 core
 - .grotconfig files specify board settings, target core, port, and memory allocation.
+- Grot is not yet capable of working with the Teensy 4.1
 
 ## Integration Points
 
@@ -193,8 +98,6 @@ EventBroadcaster::broadcastEvent(EVENT_EMERGENCY_STOP, "collision");
 - Warning when too close to objects (detected by ToF sensors)
 - Corrective action when collision detected (TBD).  
 
-**Watchdog Timer:** (TODO) M4 monitors M7 heartbeat, stops motors on timeout
-
 **Battery Protection:** (TODO) Critical voltage warning and shutdown at appropriate voltages (3S LiPo)
 
 **Safe State:** Motors stop, balance continues, warning displayed, alert sent
@@ -217,6 +120,4 @@ EventBroadcaster::broadcastEvent(EVENT_EMERGENCY_STOP, "collision");
 ## Notes
 
 - **Timing is critical** - M4 must maintain sufficient loop timing for stable balance
-- **Never block on M4** - No Serial.print, no delays >1ms (excepting debugging)
-- **Serial is M7 only** - All M4 output goes via event queue
-- **CAN conflicts** - Only M4 controls CAN bus
+- **Never block on critical tasks** - No Serial.print, no delays >1ms (excepting debugging)
